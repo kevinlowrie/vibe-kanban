@@ -77,6 +77,14 @@ if (isTauriApp()) {
   document.addEventListener('gesturechange', (e) => e.preventDefault());
 }
 
+if ('serviceWorker' in navigator && !isTauriApp()) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/sw.js').catch((error: unknown) => {
+      console.warn('Offline app shell could not be registered.', error);
+    });
+  });
+}
+
 configureAuthRuntime({
   getToken: () => tokenManager.getToken(),
   triggerRefresh: () => tokenManager.triggerRefresh(),

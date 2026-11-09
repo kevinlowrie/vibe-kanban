@@ -10,7 +10,8 @@ import {
   buildKanbanIssueComposerKey,
   closeKanbanIssueComposer,
 } from '@/shared/stores/useKanbanIssueComposerStore';
-import { ProjectSunsetPage } from './ProjectSunsetPage';
+import { ProjectBoardPoc } from './ProjectBoardPoc';
+import { projectBoardProcessApi } from './pclip-project-board-api';
 
 /**
  * Hook to find a project by ID, using orgId from Zustand store
@@ -32,8 +33,10 @@ function useFindProjectById(projectId: string | undefined) {
     return projects.find((p) => p.id === projectId);
   }, [projectId, projects]);
 
+  const { userId } = useAuth();
   return {
     project,
+    userId,
     organizationId: project?.organization_id ?? selectedOrgId,
     // Include auth loading state - we can't determine project access until auth loads
     isLoading: !authLoaded || orgsLoading || projectsLoading,
@@ -76,7 +79,7 @@ export function ProjectKanban() {
   }, [issueComposerKey]);
 
   // Find the project and get its organization
-  const { project, organizationId, isLoading } = useFindProjectById(
+  const { project, userId, organizationId, isLoading } = useFindProjectById(
     projectId ?? undefined
   );
 
@@ -103,7 +106,7 @@ export function ProjectKanban() {
     );
   }
 
-  if (!projectId || !organizationId) {
+  if (!projectId || !organizationId || !userId) {
     return (
       <div className="flex items-center justify-center h-full w-full">
         <p className="text-low">{t('kanban.noProjectFound')}</p>
@@ -111,5 +114,12 @@ export function ProjectKanban() {
     );
   }
 
-  return <ProjectSunsetPage projectName={project?.name} />;
+  return (
+    <ProjectBoardPoc
+      projectId={projectId}
+      userId={userId}
+      projectName={project?.name}
+      api={projectBoardProcessApi}
+    />
+  );
 }

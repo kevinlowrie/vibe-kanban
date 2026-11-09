@@ -1,0 +1,300 @@
+openapi: 3.1.0
+info:
+  title: Project board process API
+  version: 0.1.0-proposed
+  description: >-
+    Proposed resource contract for the Project board proof of concept. The
+    same operations will be exposed through native gRPC and HTTPS MCP. These
+    operations are not implemented or deployed by thl-pclipd-api.
+servers:
+  - url: /api/v1
+security:
+  - firebaseBearer: []
+paths:
+  /projects/{project_id}/tasks:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getProjectTasks
+      summary: Read a project plan and its process updates
+      description: >-
+        The server derives tenant scope from the signed-in user's membership.
+        A browser-supplied tenant identifier is not accepted.
+      responses:
+        "200":
+          description: Project task snapshot
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSnapshot"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
+  /projects/{project_id}/tasks/{task_id}/actions:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    post:
+      operationId: requestProjectTaskAction
+      summary: Request a workflow action for a project task
+      description: >-
+        The server checks prerequisites, check results, and approval rights
+        against server-owned state. A check can be accepted asynchronously;
+        acceptance does not mean that the check has passed.
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskActionRequest"
+      responses:
+        "200":
+          description: Action completed and the updated project snapshot
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskActionResult"
+        "202":
+          description: Check accepted; its result will arrive through the process API
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskActionAccepted"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Idempotency key reused for a different action
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "422":
+          description: Workflow action is not allowed in the current state
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          $ref: "#/components/responses/ServerError"
+components:
+  securitySchemes:
+    firebaseBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID token
+      description: >-
+        Portal APIs verify the Firebase ID token to establish user identity.
+        MCP Streamable HTTP endpoints must follow MCP OAuth authorization and
+        use a resource-audience token; do not forward this token unless the
+        MCP resource explicitly accepts it under that contract.
+  parameters:
+    ProjectId:
+      name: project_id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+  headers:
+    RequestId:
+      description: Stable request identifier for support and tracing
+      schema:
+        type: string
+  responses:
+    Unauthorized:
+      description: Missing, invalid, or revoked sign-in
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    NotFound:
+      description: Project or task is unavailable to this user
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    ServerError:
+      description: Redacted server error
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+  schemas:
+    ProjectSnapshot:
+      type: object
+      required: [project_id, version, schedule]
+      properties:
+        project_id:
+          type: string
+        version:
+          type: integer
+          minimum: 0
+        schedule:
+          type: object
+          required: [start_date, end_date, time_zone]
+          properties:
+            start_date:
+              type: string
+              format: date
+            end_date:
+              type: string
+              format: date
+              description: Exclusive end date for the visible schedule window
+            time_zone:
+              type: string
+              description: IANA time zone used to render project dates
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectTask"
+    ProjectTask:
+      type: object
+      required:
+        - task_id
+        - title
+        - description
+        - owner
+        - state
+        - planned_start
+        - planned_end
+        - prerequisite_task_ids
+        - check_state
+        - approval_state
+        - process_updates
+      properties:
+        task_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        owner:
+          type: string
+        state:
+          $ref: "#/components/schemas/TaskState"
+        planned_start:
+          type: string
+          format: date
+        planned_end:
+          type: string
+          format: date
+          description: Exclusive end date
+        prerequisite_task_ids:
+          type: array
+          items:
+            type: string
+        check_state:
+          type: string
+          enum: [not_started, running, passed, needs_attention]
+        approval_state:
+          type: string
+          enum: [waiting, approved]
+        approver_role:
+          type: [string, "null"]
+        process_updates:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProcessUpdate"
+    TaskState:
+      type: string
+      enum: [ideas, ready, in_progress, review, done]
+    ProcessUpdate:
+      type: object
+      required: [source, request_id, state, updated_at]
+      properties:
+        source:
+          type: string
+          enum: [pclip, n8n]
+        request_id:
+          type: string
+        state:
+          type: string
+          enum: [queued, running, passed, needs_attention]
+        updated_at:
+          type: string
+          format: date-time
+    TaskActionRequest:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum:
+            - move_to_ready
+            - start
+            - request_review
+            - run_check
+            - approve_and_finish
+    TaskActionResult:
+      type: object
+      required: [project]
+      properties:
+        project:
+          $ref: "#/components/schemas/ProjectSnapshot"
+    TaskActionAccepted:
+      type: object
+      required: [request_id, state, project]
+      properties:
+        request_id:
+          type: string
+        state:
+          type: string
+          const: accepted
+        project:
+          $ref: "#/components/schemas/ProjectSnapshot"
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            request_id:
+              type: string
