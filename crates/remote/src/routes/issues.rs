@@ -357,31 +357,117 @@ async fn update_issue(
     let organization_id =
         ensure_project_access(state.pool(), ctx.user.id, issue.project_id).await?;
 
+    if payload.expected_status_id.is_some() && payload.status_id.is_none() {
+        return Err(ErrorResponse::new(
+            StatusCode::BAD_REQUEST,
+            "expected_status_id requires status_id",
+        ));
+    }
+
     let mut tx = crate::db::begin_tx(state.pool()).await.map_err(|error| {
         tracing::error!(?error, "failed to begin transaction");
         ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
     })?;
+    let mut notification_baseline = issue.clone();
+    let mut replayed_issue = None;
 
-    let data = IssueRepository::update(
-        &mut *tx,
-        issue_id,
-        payload.status_id,
-        payload.title,
-        payload.description,
-        payload.priority,
-        payload.start_date,
-        payload.target_date,
-        payload.completed_at,
-        payload.sort_order,
-        payload.parent_issue_id,
-        payload.parent_issue_sort_order,
-        payload.extension_metadata,
-    )
-    .await
-    .map_err(|error| {
-        tracing::error!(?error, "failed to update issue");
-        ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
-    })?;
+    if let Some(target_status_id) = payload.status_id {
+        let target_status = ProjectStatusRepository::find_by_id(&mut *tx, target_status_id)
+            .await
+            .map_err(|error| {
+                tracing::error!(?error, %target_status_id, "failed to load target issue status");
+                ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+            })?
+            .filter(|status| status_belongs_to_project(status, issue.project_id))
+            .ok_or_else(|| {
+                ErrorResponse::new(StatusCode::BAD_REQUEST, "status does not belong to project")
+            })?;
+
+        if let Some(expected_status_id) = payload.expected_status_id {
+            // Serialize board transitions for this issue so a stale concurrent
+            // action cannot skip a stage. A replay of an already-applied move
+            // returns the persisted issue without advancing it again.
+            sqlx::query!("SELECT id FROM issues WHERE id = $1 FOR UPDATE", issue_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(|error| {
+                    tracing::error!(?error, %issue_id, "failed to lock issue for status transition");
+                    ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+                })?
+                .ok_or_else(|| ErrorResponse::new(StatusCode::NOT_FOUND, "issue not found"))?;
+
+            let current_issue = IssueRepository::find_by_id(&mut *tx, issue_id)
+                .await
+                .map_err(|error| {
+                    tracing::error!(?error, %issue_id, "failed to reload locked issue");
+                    ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+                })?
+                .ok_or_else(|| ErrorResponse::new(StatusCode::NOT_FOUND, "issue not found"))?;
+            notification_baseline = current_issue.clone();
+
+            let statuses = ProjectStatusRepository::list_by_project(
+                &mut *tx,
+                current_issue.project_id,
+            )
+            .await
+            .map_err(|error| {
+                tracing::error!(?error, project_id = %current_issue.project_id, "failed to load project statuses");
+                ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+            })?;
+
+            if !is_safe_status_transition(
+                &statuses,
+                current_issue.status_id,
+                expected_status_id,
+                target_status.id,
+            ) {
+                let message = if current_issue.status_id != expected_status_id
+                    && current_issue.status_id != target_status.id
+                {
+                    "issue status changed; refresh and retry"
+                } else if current_issue.status_id == target_status.id {
+                    "status transition replay does not match the next visible project status"
+                } else {
+                    "status transition is not the next visible project status"
+                };
+                return Err(ErrorResponse::new(StatusCode::CONFLICT, message));
+            }
+
+            if is_idempotent_status_replay(
+                current_issue.status_id,
+                expected_status_id,
+                target_status.id,
+            ) {
+                replayed_issue = Some(current_issue);
+            }
+        }
+    }
+
+    let was_replay = replayed_issue.is_some();
+    let data = if let Some(issue) = replayed_issue {
+        issue
+    } else {
+        IssueRepository::update(
+            &mut *tx,
+            issue_id,
+            payload.status_id,
+            payload.title,
+            payload.description,
+            payload.priority,
+            payload.start_date,
+            payload.target_date,
+            payload.completed_at,
+            payload.sort_order,
+            payload.parent_issue_id,
+            payload.parent_issue_sort_order,
+            payload.extension_metadata,
+        )
+        .await
+        .map_err(|error| {
+            tracing::error!(?error, "failed to update issue");
+            ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
+        })?
+    };
 
     let txid = get_txid(&mut *tx).await.map_err(|error| {
         tracing::error!(?error, "failed to get txid");
@@ -393,9 +479,133 @@ async fn update_issue(
         ErrorResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "internal server error")
     })?;
 
-    notify_issue_update_changes(&state, organization_id, ctx.user.id, &issue, &data).await;
+    if !was_replay {
+        notify_issue_update_changes(
+            &state,
+            organization_id,
+            ctx.user.id,
+            &notification_baseline,
+            &data,
+        )
+        .await;
+    }
 
     Ok(Json(MutationResponse { data, txid }))
+}
+
+fn next_visible_status_id(statuses: &[api_types::ProjectStatus], current_id: Uuid) -> Option<Uuid> {
+    let current = statuses.iter().find(|status| status.id == current_id)?;
+    statuses
+        .iter()
+        .filter(|status| {
+            !status.hidden && (status.sort_order, status.id) > (current.sort_order, current.id)
+        })
+        .min_by_key(|status| (status.sort_order, status.id))
+        .map(|status| status.id)
+}
+
+fn status_belongs_to_project(status: &api_types::ProjectStatus, project_id: Uuid) -> bool {
+    status.project_id == project_id
+}
+
+fn is_safe_status_transition(
+    statuses: &[api_types::ProjectStatus],
+    current_id: Uuid,
+    expected_id: Uuid,
+    target_id: Uuid,
+) -> bool {
+    if is_idempotent_status_replay(current_id, expected_id, target_id) {
+        next_visible_status_id(statuses, expected_id) == Some(target_id)
+    } else {
+        current_id == expected_id && next_visible_status_id(statuses, current_id) == Some(target_id)
+    }
+}
+
+fn is_idempotent_status_replay(current_id: Uuid, expected_id: Uuid, target_id: Uuid) -> bool {
+    current_id == target_id && expected_id != target_id
+}
+
+#[cfg(test)]
+mod status_transition_tests {
+    use api_types::ProjectStatus;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    use super::{
+        is_idempotent_status_replay, is_safe_status_transition, next_visible_status_id,
+        status_belongs_to_project,
+    };
+
+    fn status(id: Uuid, sort_order: i32, hidden: bool) -> ProjectStatus {
+        ProjectStatus {
+            id,
+            project_id: Uuid::nil(),
+            name: format!("status-{sort_order}"),
+            color: "0 0% 50%".to_string(),
+            sort_order,
+            hidden,
+            created_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn advances_to_the_next_visible_status_and_skips_hidden_statuses() {
+        let backlog = Uuid::new_v4();
+        let todo = Uuid::new_v4();
+        let in_progress = Uuid::new_v4();
+        let cancelled = Uuid::new_v4();
+        let statuses = vec![
+            status(backlog, 0, true),
+            status(todo, 1, false),
+            status(in_progress, 2, false),
+            status(cancelled, 5, true),
+        ];
+
+        assert_eq!(next_visible_status_id(&statuses, backlog), Some(todo));
+        assert_eq!(next_visible_status_id(&statuses, todo), Some(in_progress));
+        assert_eq!(next_visible_status_id(&statuses, in_progress), None);
+        assert_eq!(next_visible_status_id(&statuses, Uuid::new_v4()), None);
+        assert!(is_safe_status_transition(&statuses, backlog, backlog, todo));
+        assert!(is_safe_status_transition(&statuses, todo, backlog, todo));
+        assert!(is_idempotent_status_replay(todo, backlog, todo));
+        assert!(!is_idempotent_status_replay(todo, todo, todo));
+        assert!(!is_safe_status_transition(
+            &statuses,
+            backlog,
+            backlog,
+            in_progress
+        ));
+        assert!(!is_safe_status_transition(
+            &statuses,
+            in_progress,
+            backlog,
+            in_progress
+        ));
+    }
+
+    #[test]
+    fn rejects_a_status_from_another_project() {
+        let status = status(Uuid::new_v4(), 1, false);
+        assert!(status_belongs_to_project(&status, status.project_id));
+        assert!(!status_belongs_to_project(&status, Uuid::new_v4()));
+    }
+
+    #[test]
+    fn advances_between_visible_statuses_with_the_same_sort_order_by_id() {
+        let earlier = Uuid::from_u128(1);
+        let later = Uuid::from_u128(2);
+        let next_order = Uuid::from_u128(3);
+        let statuses = vec![
+            status(later, 1, false),
+            status(next_order, 2, false),
+            status(earlier, 1, false),
+        ];
+
+        assert_eq!(next_visible_status_id(&statuses, earlier), Some(later));
+        assert!(is_safe_status_transition(
+            &statuses, earlier, earlier, later
+        ));
+    }
 }
 
 #[instrument(

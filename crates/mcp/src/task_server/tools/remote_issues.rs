@@ -530,6 +530,7 @@ impl McpServer {
         };
 
         let payload = UpdateIssueRequest {
+            expected_status_id: None,
             status_id,
             title,
             description: expanded_description,
