@@ -38,3 +38,10 @@ Red: both new contract test entrypoints failed with missing implementation at th
 The standalone operator slice will be based directly on current `main` (`08064e043c2d78ad123b473257ed867e7ce74768`) rather than merging the private-Rust-dependency-blocked POC PR. Portal modules import no POC/offline/backend internals. Parent PR 1 stays open and unchanged.
 
 Independent pre-commit review cleared the corrected source. Browser artifact QA passed 19 assertions, including wall-clock-only visibility/focus recovery. BillIron validation remains in progress.
+
+
+## Data adapter continuation
+
+Single writer: portal integration lane. Isolated branch `feat/live-portal-work-board-20261111`, based on merged main `37f4c09f134887523e6fcf6ef32888f52cbb2fb9`. No distributed lock; stop on overlap. This continuation adds a data-only mount for hosts that retain authentication and transport internally. It does not modify the operator entry, grants or runtime. Local unit/build/browser verification and independent review are required before release. Live activation and tenant-denial acceptance remain distinct incomplete gates.
+
+Data-adapter source review cleared the parser, abort ordering and renderer integration. Cloud qualification: 27 unit/security tests, production bundle and all four frontend type checks pass. The browser script includes data-only tenant-switch, logout, malformed projection, no-network and teardown coverage, but its execution was blocked before browser launch by the cloud socket restriction. Rust aggregate formatting cannot run here because Cargo is absent; frontend formatting completed. This is a source review candidate, not a live activation or completed action workflow.

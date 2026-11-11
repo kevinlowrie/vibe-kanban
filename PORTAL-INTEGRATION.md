@@ -44,3 +44,19 @@ The trusted same-origin server must implement all four `GET /api/v1/{projects,is
 The operator dashboard must supply distinct, verified customer scopes. Work-card status is not deployment health. Do not mark kevinlowrie, Class101, or any customer as deployed based on this board. Do not enable a cross-tenant overview without the separate server-authorised operator contract.
 
 This artifact is **not deployed** merely because it builds. The current source dependencies (UX PR 19 and middle PR 30) remain unmerged at initial implementation. The login owner must pin the live route contract and mount before rollout. Authenticated browser/backend acceptance and live cross-tenant rejection are release gates. The future action/replay contract remains separate work; there are no mutation controls in this slice.
+
+
+## Data-only host integration
+
+Hosts that keep all authentication inside their existing SDK and API client should import `mountPortalWorkBoardWithData` instead. The board receives no credentials and makes no HTTP calls in this mode:
+
+```js
+const dispose = mountPortalWorkBoardWithData(callerOwnedElement, {
+  loadViews: async (signal) => portalApi.readCurrentWorkProjection({ signal }),
+  onSessionChange: portalAuth.subscribeToScopeChanges,
+});
+```
+
+`loadViews` returns `{userId, tenantId, projects, issues, blocked, approvals}` with the same bounded DTOs as the four read routes. The host must authenticate, verify the selected tenant against server-owned grants, recheck identity/scope after all four reads, and reject stale results before returning. It must emit invalidation synchronously for logout, scope or support-purpose changes and revocation. This is a trusted host API, not a browser-side authorization mechanism.
+
+Both mount APIs share the renderer, synchronous clearing, request sequence guards, cancellation and 15-second deadline. Malformed projections or unexpected top-level fields fail closed. The data-only API does not grant membership, activate a backend, or implement submission/approval/cancellation. Those remain separately authorized server actions and must not be represented as available merely because a board renders.
