@@ -197,35 +197,14 @@ async function readPortalWorkViews(
       current.supportReason !== session.supportReason
     )
       throw new PortalBoardError('session_changed');
-    return {
+    return parsePortalWorkProjection({
       userId: session.userId,
       tenantId: session.tenantId,
-      projects: rows(projects, 'projects', (item) => ({
-        id: id(item.id),
-        name: text(item.name),
-        status: text(item.status, 100),
-      })),
-      issues: rows(issues, 'issues', (item) => ({
-        id: id(item.id),
-        title: text(item.title),
-        status: text(item.status, 100),
-        projectId: optional(item.projectId),
-        updatedAt: optional(item.updatedAt),
-      })),
-      blocked: rows(blocked, 'blocked', (item) => ({
-        id: id(item.id),
-        title: text(item.title),
-        reason: text(item.reason),
-        updatedAt: optional(item.updatedAt),
-      })),
-      approvals: rows(approvals, 'approvals', (item) => ({
-        id: id(item.id),
-        status: text(item.status, 100),
-        type: optional(item.type),
-        issueId: optional(item.issueId),
-        updatedAt: optional(item.updatedAt),
-      })),
-    };
+      projects: row(projects).projects,
+      issues: row(issues).issues,
+      blocked: row(blocked).blocked,
+      approvals: row(approvals).approvals,
+    });
   } catch (error) {
     if (options.signal?.aborted) options.signal.throwIfAborted();
     if (error instanceof PortalBoardError) throw error;
@@ -233,14 +212,81 @@ async function readPortalWorkViews(
   }
 }
 
+/** Copy a server-authorised data projection. Authentication stays in the host. */
+export function parsePortalWorkProjection(input: unknown): PortalWorkViews {
+  const value = row(input);
+  if (
+    Object.keys(value).sort().join(',') !==
+    'approvals,blocked,issues,projects,tenantId,userId'
+  )
+    throw unavailable();
+  const tenantId = text(value.tenantId, 64, true);
+  if (!/^[a-z][a-z0-9-]{0,63}$/.test(tenantId)) throw unavailable();
+  return {
+    userId: id(value.userId),
+    tenantId: tenantId,
+    projects: rows(value, 'projects', (item) => ({
+      id: id(item.id),
+      name: text(item.name),
+      status: text(item.status, 100),
+    })),
+    issues: rows(value, 'issues', (item) => ({
+      id: id(item.id),
+      title: text(item.title),
+      status: text(item.status, 100),
+      projectId: optional(item.projectId),
+      updatedAt: optional(item.updatedAt),
+    })),
+    blocked: rows(value, 'blocked', (item) => ({
+      id: id(item.id),
+      title: text(item.title),
+      reason: text(item.reason),
+      updatedAt: optional(item.updatedAt),
+    })),
+    approvals: rows(value, 'approvals', (item) => ({
+      id: id(item.id),
+      status: text(item.status, 100),
+      type: optional(item.type),
+      issueId: optional(item.issueId),
+      updatedAt: optional(item.updatedAt),
+    })),
+  };
+}
+
+export interface PortalProjectionOptions {
+  /** Host checks its current identity and tenant before and after fetching. No tokens. */
+  loadViews: (signal: AbortSignal) => Promise<unknown>;
+  signal?: AbortSignal;
+}
+
+/** Bound a host's authenticated data read, including one that ignores abort. */
+export async function loadPortalWorkProjection(
+  options: PortalProjectionOptions
+): Promise<PortalWorkViews> {
+  return withPortalDeadline(options.signal, async (signal) => {
+    const result = await options.loadViews(signal);
+    signal.throwIfAborted();
+    return parsePortalWorkProjection(result);
+  });
+}
+
 /** Bound SDK token retrieval, all reads, body streams and the final identity check. */
 export async function loadPortalWorkViews(
   options: PortalTransportOptions
 ): Promise<PortalWorkViews> {
-  options.signal?.throwIfAborted();
+  return withPortalDeadline(options.signal, (signal) =>
+    readPortalWorkViews({ ...options, signal })
+  );
+}
+
+async function withPortalDeadline<T>(
+  signal: AbortSignal | undefined,
+  read: (signal: AbortSignal) => Promise<T>
+): Promise<T> {
+  signal?.throwIfAborted();
   const controller = new AbortController();
-  const onAbort = () => controller.abort(options.signal?.reason);
-  options.signal?.addEventListener('abort', onAbort, { once: true });
+  const onAbort = () => controller.abort(signal?.reason);
+  signal?.addEventListener('abort', onAbort, { once: true });
   const timer = setTimeout(
     () =>
       controller.abort(new DOMException('Request timed out', 'TimeoutError')),
@@ -248,25 +294,23 @@ export async function loadPortalWorkViews(
   );
   let stopWaiting: (() => void) | undefined;
   try {
-    return await Promise.race([
-      readPortalWorkViews({ ...options, signal: controller.signal }),
-      new Promise<never>((_, reject) => {
-        const rejectAbort = () => reject(controller.signal.reason);
-        stopWaiting = () =>
-          controller.signal.removeEventListener('abort', rejectAbort);
-        controller.signal.addEventListener('abort', rejectAbort, {
-          once: true,
-        });
-      }),
-    ]);
+    // Install before invoking host code: a provider may synchronously invalidate scope.
+    const aborted = new Promise<never>((_, reject) => {
+      const rejectAbort = () => reject(controller.signal.reason);
+      stopWaiting = () =>
+        controller.signal.removeEventListener('abort', rejectAbort);
+      controller.signal.addEventListener('abort', rejectAbort, { once: true });
+      if (controller.signal.aborted) rejectAbort();
+    });
+    return await Promise.race([aborted, read(controller.signal)]);
   } catch (error) {
-    if (options.signal?.aborted) options.signal.throwIfAborted();
+    if (signal?.aborted) signal.throwIfAborted();
     if (error instanceof PortalBoardError) throw error;
     throw unavailable();
   } finally {
     clearTimeout(timer);
     stopWaiting?.();
-    options.signal?.removeEventListener('abort', onAbort);
+    signal?.removeEventListener('abort', onAbort);
     controller.abort();
   }
 }

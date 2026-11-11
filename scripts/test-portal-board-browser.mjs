@@ -303,6 +303,104 @@ try {
   assert.equal(await page.locator("#work").innerHTML(), "");
   assert.equal(await page.locator("#operator").innerHTML(), "");
   assertions++;
+  // Data-only mount: the host retains authentication and supplies scoped DTOs.
+  let dataNetworkRequests = 0;
+  page.on("request", (request) => {
+    if (request.url().includes("/api/")) dataNetworkRequests++;
+  });
+  await page.evaluate(async () => {
+    const { mountPortalWorkBoardWithData } = await import("/portal-board.js");
+    let scope = "tenant-a";
+    let invalidate;
+    let delayed = false;
+    const pending = [];
+    window.setDataScope = (value) => {
+      scope = value;
+      invalidate();
+    };
+    window.delayData = () => {
+      delayed = true;
+    };
+    window.releaseData = () => {
+      delayed = false;
+      pending.forEach((fn) => fn());
+    };
+    window.disposeData = mountPortalWorkBoardWithData(
+      document.getElementById("work"),
+      {
+        onSessionChange: (fn) => {
+          invalidate = fn;
+          return () => {
+            invalidate = () => {};
+          };
+        },
+        loadViews: async (signal) => {
+          const selected = scope;
+          if (delayed) await new Promise((resolve) => pending.push(resolve));
+          if (selected === null) throw new Error("host private error");
+          return {
+            userId: "synthetic-user",
+            tenantId: selected,
+            projects: [],
+            issues: [
+              {
+                id: "task",
+                title: `Data task ${selected}`,
+                status: "todo",
+                projectId: null,
+                updatedAt: null,
+              },
+            ],
+            blocked: [],
+            approvals: [],
+          };
+        },
+      },
+    );
+  });
+  await page
+    .getByRole("heading", { name: "Data task tenant-a", exact: true })
+    .waitFor();
+  assertions++;
+  await page.evaluate(() => window.delayData());
+  await page
+    .locator("#work")
+    .getByRole("button", { name: "Refresh", exact: true })
+    .click();
+  await page.evaluate(() => window.setDataScope("tenant-b"));
+  assert.equal(await page.locator("#work .vpb-card").count(), 0);
+  assertions++;
+  await page.evaluate(() => window.releaseData());
+  await page
+    .getByRole("heading", { name: "Data task tenant-b", exact: true })
+    .waitFor();
+  assert.equal(
+    await page
+      .getByRole("heading", { name: "Data task tenant-a", exact: true })
+      .count(),
+    0,
+  );
+  assertions++;
+  await page.evaluate(() => window.setDataScope(null));
+  assert.equal(await page.locator("#work .vpb-card").count(), 0);
+  await page
+    .getByText("Work views are unavailable. Try refreshing.", { exact: true })
+    .waitFor();
+  assert.equal(
+    (await page.locator("#work").innerText()).includes("host private error"),
+    false,
+  );
+  assertions++;
+  await page.evaluate(() => window.setDataScope("../invalid-tenant"));
+  await page
+    .getByText("Work views are unavailable. Try refreshing.", { exact: true })
+    .waitFor();
+  assert.equal(await page.locator("#work .vpb-card").count(), 0);
+  assert.equal(dataNetworkRequests, 0);
+  assertions++;
+  await page.evaluate(() => window.disposeData());
+  assert.equal(await page.locator("#work").innerHTML(), "");
+  assertions++;
   assert.equal(errors.length, 0, errors.join("\n"));
   assertions++;
   console.log(

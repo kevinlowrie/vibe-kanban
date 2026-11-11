@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import {
   loadPortalWorkViews,
+  loadPortalWorkProjection,
   PortalBoardError,
   type PortalSession,
   type PortalWorkViews,
@@ -15,6 +16,13 @@ export interface PortalBoardHost {
   /** Emit synchronously on logout, identity/tenant change, or permission revocation. */
   onSessionChange: (invalidate: () => void) => () => void;
 }
+export interface PortalBoardDataHost {
+  /** Fetch and scope-check through the host's authenticated API, without exposing credentials. */
+  loadViews: (signal: AbortSignal) => Promise<unknown>;
+  /** Emit synchronously on logout, identity/tenant change, or permission revocation. */
+  onSessionChange: (invalidate: () => void) => () => void;
+}
+type WorkBoardHost = PortalBoardHost | PortalBoardDataHost;
 const columns = [
   { id: 'backlog', label: 'Backlog' },
   { id: 'todo', label: 'To do' },
@@ -23,7 +31,7 @@ const columns = [
   { id: 'blocked', label: 'Blocked' },
   { id: 'other', label: 'Other status' },
 ];
-function PortalWorkBoard({ host }: { host: PortalBoardHost }) {
+function PortalWorkBoard({ host }: { host: WorkBoardHost }) {
   const [views, setViews] = useState<PortalWorkViews | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -43,10 +51,17 @@ function PortalWorkBoard({ host }: { host: PortalBoardHost }) {
     setViews(null);
     setError('');
     setLoading(true);
-    void loadPortalWorkViews({
-      getSession: host.getSession,
-      signal: state.controller.signal,
-    })
+    const read =
+      'loadViews' in host
+        ? loadPortalWorkProjection({
+            loadViews: host.loadViews,
+            signal: state.controller.signal,
+          })
+        : loadPortalWorkViews({
+            getSession: host.getSession,
+            signal: state.controller.signal,
+          });
+    void read
       .then((result) => {
         if (state.disposed || sequence !== state.sequence) return;
         setViews(result);
@@ -247,6 +262,21 @@ export function mountPortalWorkBoard(
     throw new Error(
       'The portal must provide its authenticated session adapter.'
     );
+  const root = createRoot(element);
+  root.render(<PortalWorkBoard host={host} />);
+  return () => root.unmount();
+}
+
+/** Mount through a data-only host adapter; never pass Firebase tokens to this API. */
+export function mountPortalWorkBoardWithData(
+  element: HTMLElement,
+  host: PortalBoardDataHost
+): () => void {
+  if (
+    typeof host?.loadViews !== 'function' ||
+    typeof host?.onSessionChange !== 'function'
+  )
+    throw new Error('The portal must provide its authenticated data adapter.');
   const root = createRoot(element);
   root.render(<PortalWorkBoard host={host} />);
   return () => root.unmount();
