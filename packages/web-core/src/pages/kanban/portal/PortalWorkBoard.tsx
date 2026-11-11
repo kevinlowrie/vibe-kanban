@@ -251,4 +251,3 @@ export function mountPortalWorkBoard(
   root.render(<PortalWorkBoard host={host} />);
   return () => root.unmount();
 }
-export type { PortalSession } from './portal-work-views';
