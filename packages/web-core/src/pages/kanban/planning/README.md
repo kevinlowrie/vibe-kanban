@@ -20,3 +20,29 @@ Run `node scripts/build-planning-board.mjs` then `PORTAL_PLAYWRIGHT_MODULE=/path
 Strict scoped typecheck: `node node_modules/typescript/bin/tsc --noEmit --strict --skipLibCheck --target ES2022 --module ESNext --moduleResolution bundler --jsx react-jsx --lib ES2022,DOM packages/web-core/src/pages/kanban/planning/PlanningBoard.tsx`.
 
 No new dependencies, no package manifest changes. Root Rust/private-dependency CI and live hosting are separate gates. The loopback fixture test is not a production server.
+
+## Authenticated schedule adapter (source integration candidate)
+
+`createAuthenticatedPlanningHost` in `authenticated-host.ts` pins backend source
+`thl-pclipd-api@4e67a25bef329655382b6028af6e20a8b64789dc`:
+GET/POST `/api/v1/planning/schedule`, response header
+`X-Planning-Contract: planning-schedule/v1`, Firebase bearer and server-owned
+`X-Pclip-Domain` membership selection. No tenant query/body override.
+The host must supply fresh sessions, synchronous permission/scope invalidation,
+and actual scoped metadata through `composeSnapshot`. It must not manufacture
+dates or statuses. Missing authoritative schedule (503) stays unavailable.
+
+Writes are disabled by default. Enable only when a separate server-authoritative
+capability source confirms `planning.schedule.write` on `schedule-main`; read
+success or membership never grants write. That capability source is not supplied
+by this backend slice. POST uses an idempotency key preserved for the latest
+proposal across uncertain retries; after success/replay the adapter GETs latest
+state before rendering, because replay may return a historical revision.
+Server limits (500 items, 100 changes, 100 dependencies/item, 256KiB canonical
+payload) are stricter than local scheduling validation. Errors remain unavailable,
+not successful saves. No automatic retry, provider call or browser storage.
+
+Test: `node scripts/test-planning-authenticated-host.mjs`. These are synthetic
+HTTP fixtures, not deployed Firebase acceptance. Backend rollout, authoritative
+schedule seed, metadata composition, capability source and portal mount remain
+integration gates.

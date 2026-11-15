@@ -2,6 +2,7 @@ import { build } from "esbuild";
 await build({
   entryPoints: [
     "packages/web-core/src/pages/kanban/planning/PlanningBoard.tsx",
+    "packages/web-core/src/pages/kanban/planning/authenticated-host.ts",
   ],
   bundle: true,
   format: "esm",
