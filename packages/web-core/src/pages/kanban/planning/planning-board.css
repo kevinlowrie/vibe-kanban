@@ -1,0 +1,237 @@
+.plan-board {
+  font:
+    15px/1.5 system-ui,
+    sans-serif;
+  background: #f4f7f6;
+  color: #183c39;
+  padding: 24px;
+  max-width: 1600px;
+  margin: auto;
+}
+.plan-board * {
+  box-sizing: border-box;
+}
+.plan-board header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.plan-eyebrow {
+  font-weight: 750;
+  letter-spacing: 0.15em;
+  color: #38746d;
+}
+.plan-board h1 {
+  font-size: clamp(26px, 4vw, 42px);
+  margin: 8px 0;
+}
+.plan-board h2 {
+  font-size: 18px;
+}
+.plan-board h2 small {
+  font-size: 12px;
+  font-weight: 400;
+}
+.plan-board button,
+.plan-board input,
+.plan-board select,
+.plan-board textarea {
+  font: inherit;
+  min-height: 44px;
+  border: 1px solid #a3bbb6;
+  border-radius: 8px;
+  padding: 9px;
+  background: #fff;
+  color: #163e38;
+}
+.plan-board button {
+  cursor: pointer;
+}
+.plan-board button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.plan-board button:focus-visible,
+.plan-board input:focus-visible,
+.plan-board select:focus-visible,
+.plan-board textarea:focus-visible {
+  outline: 3px solid #d28f2c;
+  outline-offset: 2px;
+}
+.plan-boundary {
+  background: #fff0cf;
+  border-left: 4px solid #bb8526;
+  padding: 12px;
+}
+.plan-error,
+.plan-blocker {
+  color: #8c2424;
+  background: #ffeded;
+  padding: 10px;
+}
+.plan-fresh {
+  font-size: 12px;
+}
+.plan-filters {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: end;
+  margin: 20px 0;
+}
+.plan-board label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.plan-columns {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(210px, 1fr));
+  gap: 12px;
+  overflow: auto;
+  padding-bottom: 12px;
+}
+.plan-columns > section {
+  background: #e2ebe7;
+  border-radius: 12px;
+  padding: 12px;
+}
+.plan-columns h2 {
+  text-transform: capitalize;
+}
+.plan-columns article {
+  background: white;
+  border: 1px solid #c5d6cf;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.plan-columns small {
+  font-size: 11px;
+}
+.plan-title {
+  display: block;
+  text-align: left;
+  font-weight: 700 !important;
+  border: 0 !important;
+  padding-left: 0 !important;
+}
+.plan-columns p {
+  font-size: 12px;
+}
+.plan-gantt {
+  overflow: auto;
+  background: white;
+  border: 1px solid #c1d2cc;
+  border-radius: 12px;
+}
+.plan-grid {
+  display: grid;
+  grid-template-columns: 220px repeat(21, 48px);
+  min-width: 1228px;
+  padding: 8px;
+}
+.plan-row {
+  display: contents;
+}
+.plan-name {
+  text-align: left;
+  background: white;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
+}
+.plan-day {
+  border-bottom: 1px solid #d7e2df;
+  border-right: 1px solid #edf2f0;
+  min-height: 48px;
+  margin: 5px 0;
+  text-align: center;
+  padding-top: 8px;
+}
+.plan-bar {
+  background: #347d72;
+  color: white;
+}
+.plan-date {
+  font-size: 11px !important;
+  border-radius: 0 !important;
+  padding: 3px !important;
+}
+.plan-editor,
+.plan-chat,
+.plan-proposal {
+  background: white;
+  border: 1px solid #c1d2cc;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 20px;
+}
+.plan-editor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+.plan-editor h2 {
+  flex-basis: 100%;
+}
+.plan-editor input[type='checkbox'] {
+  min-height: 20px;
+}
+.plan-chat textarea {
+  width: 100%;
+  min-height: 90px;
+}
+.plan-proposal button,
+.plan-chat button {
+  margin: 12px 10px 0 0;
+}
+.plan-proposal {
+  border: 2px solid #bc8d31;
+}
+@media (max-width: 600px) {
+  .plan-board {
+    padding: 12px;
+  }
+  .plan-board header {
+    align-items: start;
+  }
+  .plan-filters > * {
+    width: 100%;
+  }
+  .plan-columns {
+    grid-template-columns: repeat(6, 260px);
+  }
+  .plan-board h1 {
+    font-size: 26px;
+  }
+  .plan-editor > * {
+    width: 100%;
+  }
+  .plan-grid {
+    grid-template-columns: 170px repeat(21, 48px);
+  }
+  .plan-name {
+    max-width: 170px;
+  }
+  .plan-boundary {
+    font-size: 13px;
+  }
+}
+
+.plan-board label:has(input[type='checkbox']) {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+}
+.plan-board input[type='checkbox'] {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  flex-shrink: 0;
+}
