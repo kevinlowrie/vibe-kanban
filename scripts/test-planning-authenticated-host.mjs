@@ -8,7 +8,7 @@ const dir = await mkdtemp(join(tmpdir(), 'planning-host-'));
 try {
   const out = join(dir, 'host.mjs');
   await build({ entryPoints: ['packages/web-core/src/pages/kanban/planning/authenticated-host.ts'], outfile: out, bundle: true, platform: 'node', format: 'esm' });
-  const { createAuthenticatedPlanningHost } = await import(pathToFileURL(out));
+  const { createAuthenticatedPlanningHost, loadPlanningCapabilities } = await import(pathToFileURL(out));
   const state = { revision: 1, items: [] };
   let current, listener, calls, response, compose, getSession;
   const reset = () => {
@@ -73,5 +73,14 @@ try {
   reset(); current.canWriteSchedule = true;
   response = () => new Response(JSON.stringify({ revision: calls.length === 1 ? 4 : 2, items: [] }), { headers: { 'content-type': 'application/json', 'X-Planning-Contract': 'planning-schedule/v1' } });
   await assert.rejects(make(true).apply({ baseRevision: 1, changes: [] }, signal()));
-  console.log('16 authenticated adapter cases passed (synthetic HTTP fixtures; no live backend)');
+  reset();
+  const caps = { contract: 'planning-capabilities/v1', canReadSchedule: true, canWriteSchedule: false };
+  const capFetch = async (url, opts) => { assert.equal(url, '/api/v1/planning/capabilities'); assert.equal(opts.headers['X-Pclip-Domain'], 'lab'); assert.equal(opts.redirect, 'error'); return new Response(JSON.stringify(caps), { headers: { 'content-type': 'application/json' } }); };
+  assert.deepEqual(await loadPlanningCapabilities(current, signal(), capFetch), caps);
+  for (const invalid of [{ ...caps, canWriteSchedule: 'true' }, { ...caps, extra: 'bad' }, { ...caps, contract: 'unknown' }]) {
+    await assert.rejects(loadPlanningCapabilities(current, signal(), async () => new Response(JSON.stringify(invalid), { headers: { 'content-type': 'application/json' } })));
+  }
+  await assert.rejects(loadPlanningCapabilities(current, signal(), async () => new Response('SECRET', { status: 503 })));
+  await assert.rejects(loadPlanningCapabilities(current, signal(), async () => new Response('x'.repeat(1025), { headers: { 'content-type': 'application/json' } })));
+  console.log('22 authenticated adapter cases passed (synthetic HTTP fixtures; no live backend)');
 } finally { await rm(dir, { recursive: true, force: true }); }

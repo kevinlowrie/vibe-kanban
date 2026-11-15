@@ -111,3 +111,44 @@ export function createAuthenticatedPlanningHost(options: AuthenticatedPlanningOp
     ...(options.enableWrites ? { apply: (proposal: ScheduleProposal, signal: AbortSignal) => request(signal, proposal) } : {}),
   };
 }
+
+export interface PlanningCapabilities {
+  contract: 'planning-capabilities/v1';
+  canReadSchedule: boolean;
+  canWriteSchedule: boolean;
+}
+/** Advisory authorization response, never schedule readiness or a durable permission lease.
+ * Caller must discard on any identity/tenant/permission epoch change. POST reauthorizes.
+ */
+export async function loadPlanningCapabilities(
+  value: PlanningSession, signal: AbortSignal, fetcher: typeof fetch = fetch
+): Promise<PlanningCapabilities> {
+  const scoped = session(value);
+  signal.throwIfAborted();
+  try {
+    const response = await fetcher('/api/v1/planning/capabilities', {
+      method: 'GET', headers: { Authorization: 'Bearer ' + scoped.idToken,
+        'X-Pclip-Domain': scoped.pclipDomain, Accept: 'application/json' },
+      credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer', signal,
+    });
+    if (response.status !== 200 || response.redirected || !response.body ||
+        !/^application\/json(?:;|$)/i.test(response.headers.get('content-type') ?? '')) throw unavailable();
+    const reader = response.body.getReader();
+    const bytes: number[] = [];
+    try {
+      for (;;) {
+        const part = await reader.read();
+        if (part.done) break;
+        if (bytes.length + part.value.byteLength > 1024) { await reader.cancel(); throw unavailable(); }
+        bytes.push(...part.value);
+      }
+    } finally { reader.releaseLock(); }
+    signal.throwIfAborted();
+    const data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(bytes)));
+    if (!data || typeof data !== 'object' || Array.isArray(data) ||
+        Object.keys(data).sort().join(',') !== 'canReadSchedule,canWriteSchedule,contract' ||
+        data.contract !== 'planning-capabilities/v1' || typeof data.canReadSchedule !== 'boolean' ||
+        typeof data.canWriteSchedule !== 'boolean') throw unavailable();
+    return { contract: data.contract, canReadSchedule: data.canReadSchedule, canWriteSchedule: data.canWriteSchedule };
+  } catch { throw unavailable(); }
+}

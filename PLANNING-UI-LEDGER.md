@@ -18,3 +18,8 @@ Final 16 synthetic adapter cases and strict TypeScript independently passed.
 Existing 16 browser UI cases also pass with zero page errors.
 Composition mutation, scope-invalidation races and historical replay regression
 are explicitly tested. Source only; no live authorization or transaction proven.
+
+Capability loader pins backend b02cf8d1969f97fa1802500ae62eb99ffedd8b3e.
+Independent review approved adapter SHA559e209523676fe923252d6c64afe92cd06573ec6da00cfdfa69c8ed11474897;
+22 synthetic cases and strict TypeScript passed. No actual host mount or live
+capability acceptance. Caller owns scope-bound cancellation and epoch checks.

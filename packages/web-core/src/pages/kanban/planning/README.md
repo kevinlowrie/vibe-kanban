@@ -46,3 +46,16 @@ Test: `node scripts/test-planning-authenticated-host.mjs`. These are synthetic
 HTTP fixtures, not deployed Firebase acceptance. Backend rollout, authoritative
 schedule seed, metadata composition, capability source and portal mount remain
 integration gates.
+
+### Capability loader
+Backend source b02cf8d1969f97fa1802500ae62eb99ffedd8b3e adds
+GET /api/v1/planning/capabilities. Exported loadPlanningCapabilities sends the
+fresh host-provided Firebase session to that same-origin path, requires the exact
+planning-capabilities/v1 body, and returns explicit read/write booleans.
+The host must discard the result after any scope epoch change, including an
+identity switch away and back. Pass the scope-bound AbortSignal and never cache
+the result as a permission lease. The loader does not install a login listener.
+Use only a current authoritative canWriteSchedule to populate PlanningSession.
+False is not an error; read permission does not imply write permission.
+A true capability does not prove storage, schedule readiness or successful work.
+No deployed endpoint or real tenant acceptance is claimed.
