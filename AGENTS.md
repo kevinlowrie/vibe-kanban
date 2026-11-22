@@ -56,4 +56,14 @@ Do not manually edit shared/remote-types.ts, instead edit crates/remote/src/bin/
 - Use `.env` for local overrides; never commit secrets. Key envs: `FRONTEND_PORT`, `BACKEND_PORT`, `HOST` 
 - Dev ports and assets are managed by `scripts/setup-dev-environment.js`.
 
+## Branch & hook policy
 
+This repository follows the [harmonized branch, hook & release policy](docs/dev-branch-policy.md).
+Local hooks run `scripts/hook_policy.py` — **FAST** profile on WIP/PR branches
+(fast commit/push loop), **FULL** profile on protected branches (`main`,
+`testing`, `freeze`, `release-candidate`, `release`, `prod`).
+
+```sh
+pre-commit install            # or: make hooks-install
+python3 scripts/hook_policy.py status
+```
