@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # Per-repo full-gate command for protected branches.
 # None = auto-detect (HOMELAB_FULL_GATE_CMD env, workstation acceptance,
 #        make check, tests/ discovery, git status fallback).
-FULL_GATE_CMD: tuple[str, ...] | None = ("npm", "run", "check")
+FULL_GATE_CMD: tuple[str, ...] | None = ("pnpm", "--filter", "@vibe/ui", "run", "check")
 
 PROTECTED_EXACT = {
     "main",
