@@ -118,11 +118,27 @@ mod tests {
     }
 
     #[test]
-    fn test_calculate_dimensions_portrait() {
-        let (w, h) = calculate_thumbnail_dimensions(600, 800);
-        // 600x800 aspect ratio = 3:4
-        // Max height 150, width would be 112
-        assert_eq!((w, h), (112, 150));
+    fn test_generate_portrait_thumbnail() {
+        let image = DynamicImage::new_rgb8(600, 800);
+        let mut source = Vec::new();
+        image::codecs::jpeg::JpegEncoder::new(&mut source)
+            .encode_image(&image)
+            .unwrap();
+
+        let thumbnail = ThumbnailService::generate(&source, Some("image/jpeg"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (thumbnail.original_width, thumbnail.original_height),
+            (600, 800)
+        );
+        assert_eq!((thumbnail.width, thumbnail.height), (113, 150));
+        assert_eq!(thumbnail.mime_type, "image/jpeg");
+
+        let decoded =
+            image::load_from_memory_with_format(&thumbnail.bytes, image::ImageFormat::Jpeg)
+                .unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (113, 150));
     }
 
     #[test]
