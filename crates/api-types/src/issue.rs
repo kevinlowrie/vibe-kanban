@@ -78,6 +78,11 @@ pub struct CreateIssueRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct UpdateIssueRequest {
+    /// Optional current status guard for a status transition. When present,
+    /// the server accepts only the next visible status, or an idempotent replay.
+    #[ts(optional)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_status_id: Option<Uuid>,
     #[serde(
         default,
         deserialize_with = "some_if_present",
@@ -201,4 +206,33 @@ pub struct ListIssuesResponse {
     pub total_count: usize,
     pub limit: usize,
     pub offset: usize,
+}
+
+#[cfg(test)]
+mod update_issue_request_tests {
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use super::UpdateIssueRequest;
+
+    #[test]
+    fn expected_status_guard_is_optional_for_existing_clients() {
+        let payload: UpdateIssueRequest =
+            serde_json::from_value(json!({ "title": "Existing update" })).unwrap();
+
+        assert_eq!(payload.expected_status_id, None);
+        assert_eq!(payload.title.as_deref(), Some("Existing update"));
+        assert_eq!(
+            serde_json::to_value(payload).unwrap(),
+            json!({ "title": "Existing update" })
+        );
+
+        let expected_status_id = Uuid::new_v4();
+        let guarded: UpdateIssueRequest = serde_json::from_value(json!({
+            "status_id": Uuid::new_v4(),
+            "expected_status_id": expected_status_id,
+        }))
+        .unwrap();
+        assert_eq!(guarded.expected_status_id, Some(expected_status_id));
+    }
 }
