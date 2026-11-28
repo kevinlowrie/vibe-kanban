@@ -354,8 +354,8 @@ export async function queuedRequestCount(userId: string): Promise<number> {
   return localDatabase()
     .outbox.where('[userId+state+nextAttemptAt]')
     .between(
-      [userId, Dexie.minKey, Dexie.minKey],
-      [userId, Dexie.maxKey, Dexie.maxKey]
+      [userId, 'queued', Dexie.minKey],
+      [userId, 'queued', Dexie.maxKey]
     )
     .count();
 }

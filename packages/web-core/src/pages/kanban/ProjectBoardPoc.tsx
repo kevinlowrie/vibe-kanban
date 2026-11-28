@@ -216,9 +216,7 @@ export function ProjectBoardPoc({
             kind: 'task_action',
             payload: { action: 'move', destination },
           });
-          setNotice(
-            'Saved on this device. It will be sent when you reconnect.'
-          );
+          setNotice('Request saved on this device.');
           return;
         }
         const result = await api.moveTask(
@@ -259,7 +257,7 @@ export function ProjectBoardPoc({
           kind: 'task_action',
           payload: { action: 'run_required_check' },
         });
-        setNotice('Saved on this device. It will be sent when you reconnect.');
+        setNotice('Check request saved on this device.');
         return;
       }
       const next = await api.runRequiredCheck(
@@ -289,9 +287,7 @@ export function ProjectBoardPoc({
           kind: 'task_action',
           payload: { action: 'approve' },
         });
-        setNotice(
-          'Approval request saved. It will be sent when you reconnect.'
-        );
+        setNotice('Approval request saved on this device.');
         return;
       }
       const result = await api.approveTask(

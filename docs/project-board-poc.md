@@ -1,14 +1,17 @@
 # Project board proof of concept
 
-The project route now renders a sample Project board instead of the upstream
-retirement screen. Its example plan covers Pclip task updates, n8n check results,
-task dependencies, and human approval. The page is a fork-local proof of
-concept; it does not replace the repository's underlying issue storage or
-connect to a live Pclip or n8n deployment.
+The signed-in `/projects/$projectId` route renders `ProjectKanban`, which
+uses `ProjectProvider` to load project-scoped issues and statuses through
+Electric. `LiveProjectBoard` shows visible statuses and moves an issue to the
+next visible status through the existing issue API, with its current status as
+a precondition. The live board shows Pclip and n8n as disconnected.
+
+The Playwright fixture renders `ProjectBoardPoc` with a local example adapter
+for Pclip task updates, n8n checks, task dependencies, and human approval.
 
 ## Process boundary
 
-The UI consumes one normalized project-process snapshot through
+The fixture consumes one normalized project-process snapshot through
 `ProjectBoardProcessApi`. The local adapter returns example data and simulates
 check results, status changes, and human approval. Selecting a task shows its
 Pclip work and n8n check updates with their request references and timestamps.
@@ -33,8 +36,7 @@ and status endpoints can represent asynchronous work, but the project list,
 timeline, transition decision, and downstream n8n result shapes are not yet
 defined as a deployed wire contract. Do not replace the example adapter with
 live calls until those contracts and server-side transition enforcement are
-implemented and verified. The project page labels its current data as an
-example for this reason.
+implemented and verified. The fixture labels its data as an example.
 
 ## Demonstrated boundaries
 
@@ -51,14 +53,11 @@ security boundary for real users until enforced by the authenticated server API.
 
 ## Offline request and execution path
 
-On phones and laptops, each interface keeps a user-partitioned IndexedDB cache for
-project snapshots, conversations, messages, reviewed memories, artifacts, and
-an idempotent request outbox. When offline, the board saves a task action to
-that outbox and labels it as saved on this device. It does not claim that a
-Kubernetes job has started. Retry delivery must use the same idempotency key;
-the portal API must deduplicate it and route accepted work through the
-authenticated control plane. Large artifacts remain local until the API
-issues an upload grant and confirms durable object storage.
+The fixture caches project snapshots and saves offline task requests in the
+user-partitioned IndexedDB outbox. Its notices tell users which requests were
+saved on the device. Delivery on reconnect needs an authenticated transport
+and durable server-side replay and deduplication. Conversation, message,
+memory, and artifact tables are storage primitives.
 
 The intended end-to-end route is:
 

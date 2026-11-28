@@ -164,7 +164,7 @@ components:
   schemas:
     ProjectSnapshot:
       type: object
-      required: [project_id, version, schedule]
+      required: [project_id, version, schedule, tasks]
       properties:
         project_id:
           type: string

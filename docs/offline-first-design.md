@@ -25,12 +25,14 @@ after durable remote acknowledgement or user-directed removal.
 
 Use a service worker only for the app shell and immutable build assets. Never
 cache authenticated API, OAuth, or user responses in the service worker. The
-structured application cache remains in IndexedDB. This repository's proof of
-concept currently adds project snapshots and queued board actions; conversation,
-message, memory and artifact tables are storage primitives, not yet wired into
-its chat screens. A real Pub/Sub transport, Firebase identity adapter, S3
-upload service, desktop presence/lease protocol, MCP gateway, n8n adapter, and
-Podman gang-leader are still required for end-to-end dispatch.
+structured application cache remains in IndexedDB. The `ProjectBoardPoc`
+fixture caches example snapshots and queues board actions on the device. The
+signed-in project route uses `LiveProjectBoard` with the existing Electric
+issue and status data. The fixture's outbox still needs a backend transport
+for replay on reconnect. Conversation, message, memory and artifact tables
+are storage primitives. End-to-end dispatch also needs Pub/Sub transport,
+Firebase identity, S3 upload, desktop presence and leases, MCP, n8n, and the
+Podman gang-leader.
 
 ## Evidence reviewed
 
@@ -60,11 +62,12 @@ These repositories differ in maturity and platform. The implementation borrows r
   idempotency key, API request ID, and lifecycle state.
 - `meta`: per-user event cursor and migration metadata.
 
-On reconnect: refresh auth, publish oldest due outbox item using the original
-key, record the API receipt, fetch user-channel events after the saved cursor,
-apply each event and its outbox transition in one local transaction, then show
-completed/failed/approval-needed status. The portal control plane records task intent, priority, process events, and
-artifact destination. It coordinates pclipd and n8n state and uses HTTPS MCP
+The planned reconnect sequence refreshes auth, publishes the oldest due
+outbox item using the original key, and records the API receipt. The client
+then fetches user-channel events after the saved cursor, applies each event
+and its outbox transition in one local transaction, and shows the completion,
+failure, or approval status. The portal control plane records task intent,
+priority, process events, and artifact destination. It coordinates pclipd and n8n state and uses HTTPS MCP
 across the Cloudflare mesh to notify/coordinate the desktop gang-leader. The
 client-side pclipd maintains the authenticated gRPC connection to its assigned
 Kubernetes instance. Neither the phone/web clients nor the client deployment

@@ -13,8 +13,13 @@ same project read and task action boundary in OpenAPI 3.1.
 The scaffold in `thl-pclipd-api` provides `POST /api/v1/work` and
 `GET /api/v1/work/{work_id}`. Those operations submit and report one async work
 request. They do not provide a project task list, dependency graph, schedule,
-review decision, or an API-enforced workflow transition. The board therefore
-uses a local adapter with example data.
+review decision, or an API-enforced workflow transition.
+
+The signed-in `/projects/$projectId` route uses `ProjectKanban` and its
+`LiveProjectBoard` to show the existing project-scoped Electric issues and
+statuses. The current issue API handles next-status moves. The table below
+describes the separate `ProjectBoardPoc` fixture and its example process
+adapter.
 
 ## Proposed browser-facing contract
 
@@ -52,7 +57,7 @@ results enter through authenticated service-side adapters and update normalized
 task state; the browser receives those results through the API, never through an
 embedded service dashboard or direct connection to either service.
 
-## Mapping from the board
+## Mapping from the fixture
 
 | Board behavior                  | API responsibility                                 | Current proof-of-concept behavior         |
 | ------------------------------- | -------------------------------------------------- | ----------------------------------------- |
@@ -92,9 +97,9 @@ foundation as the next serial API slices:
 3. **Process result adapters** — accept authenticated Pclip/n8n status using
    versioned contracts from their owning repos. Do not connect browser code to
    either process service.
-4. **Board API client** — replace the local example adapter with the typed API
-   client only after slices 1–3 and their contract tests are available. Keep
-   the API and UI changes in separate reviewable PRs.
+4. **Board API client** — connect the typed process API and authenticated
+   outbox replay only after slices 1–3 and their contract tests are available.
+   Keep the API and UI changes in separate reviewable PRs.
 5. **Deployment artifacts** — update Firebase Hosting/API configuration and GCE
    Terraform references to the agreed API origin and project. Review offline
    plans only; resource creation and apply require separate authorization.
